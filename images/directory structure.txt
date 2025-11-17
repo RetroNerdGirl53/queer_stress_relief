@@ -1,0 +1,37 @@
+stress-relief-game/
+│
+├── game.py                          # Main game file (the Python code)
+│
+├── images/                          # Optional: Place your asset images here
+│   ├── weapons/
+│   │   ├── weapon_slingshot.png
+│   │   ├── weapon_rocket.png
+│   │   ├── weapon_catapult.png
+│   │   ├── weapon_bbgun.png
+│   │   ├── weapon_bow.png
+│   │   ├── weapon_crossbow.png
+│   │   ├── weapon_darts.png
+│   │   ├── weapon_star.png
+│   │   ├── weapon_cannon.png
+│   │   ├── weapon_missile.png
+│   │   └── weapon_pride.png
+│   │
+│   ├── ammo/
+│   │   ├── ammo_vegetable.png
+│   │   ├── ammo_rocket.png
+│   │   ├── ammo_boulder.png
+│   │   ├── ammo_tomato.png
+│   │   ├── ammo_poison_arrow.png
+│   │   ├── ammo_marshmallow.png
+│   │   ├── ammo_dart.png
+│   │   ├── ammo_star.png
+│   │   ├── ammo_potato.png
+│   │   ├── ammo_frog.png
+│   │   ├── ammo_trans_missile.png
+│   │   └── ammo_pride.png
+│   │
+│   └── other/
+│       ├── target.png
+│       └── powerup_daddy.png
+│
+└── README.md                        # Optional: Game instructions
