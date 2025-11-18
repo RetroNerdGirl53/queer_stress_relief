@@ -50,15 +50,16 @@ POWERUP_SIZE = 100
 
 class Weapon:
     """Represents a weapon with its properties"""
-    def __init__(self, name, projectile_type, speed, is_homing=False):
+    def __init__(self, name, projectile_type, speed, projectile_size, is_homing=False):
         self.name = name
         self.projectile_type = projectile_type
         self.speed = speed
+        self.projectile_size = projectile_size
         self.is_homing = is_homing
 
 
 class Projectile:
-    """Represents a fired projectile"""
+    """Represents a fired projectile."""
     def __init__(self, x, y, vx, vy, is_homing=False, ammo_index=0):
         self.x = x
         self.y = y
@@ -102,23 +103,26 @@ class Game:
 
         # Initialize weapons with all 12 types
         self.weapons = [
-            Weapon("Slingshot", "Vegetables", 15),
-            Weapon("Bottle Rockets", "Rockets", 20),
-            Weapon("Catapult", "Boulders", 12),
-            Weapon("Tomato BB Gun", "Tomatoes", 25),
-            Weapon("Poison Bow", "Poison Arrows", 18),
-            Weapon("Marshmallow Crossbow", "Flaming Marshmallows", 16),
-            Weapon("Darts", "Darts", 22),
-            Weapon("Throwing Stars", "Shuriken", 24),
-            Weapon("Potato Cannon", "Potatoes", 17),
-            Weapon("Frog Cannon", "Gay Frogs", 17),
-            Weapon("Trans Missile", "Guided Missile", 10, is_homing=True),
-            Weapon("Pride Parade", "Rainbow Seeker", 14, is_homing=True)
+            Weapon("Slingshot", "Vegetables", 15, 30),
+            Weapon("Bottle Rockets", "Rockets", 20, 25),
+            Weapon("Catapult", "Boulders", 12, 50),
+            Weapon("Tomato BB Gun", "Tomatoes", 25, 20),
+            Weapon("Poison Bow", "Poison Arrows", 18, 35),
+            Weapon("Marshmallow Crossbow", "Flaming Marshmallows", 16, 25),
+            Weapon("Darts", "Darts", 22, 15),
+            Weapon("Throwing Stars", "Shuriken", 24, 25),
+            Weapon("Potato Cannon", "Potatoes", 17, 40),
+            Weapon("Frog Cannon", "Gay Frogs", 17, 45),
+            Weapon("Trans Missile", "Guided Missile", 10, 55, is_homing=True),
+            Weapon("Pride Parade", "Rainbow Seeker", 14, 60, is_homing=True)
         ]
 
         # Load weapon images (or create placeholders if not found)
         self.weapon_images = {}
         self.load_weapon_images()
+
+        self.ammo_images = {}
+        self.load_ammo_images()
 
         self.current_weapon_index = 0
         self.projectiles = []
@@ -216,6 +220,7 @@ class Game:
 
         for i, filename in enumerate(ammo_files):
             image_loaded = False
+            projectile_size = self.weapons[i].projectile_size
 
             # Try multiple paths
             possible_paths = [
@@ -227,7 +232,7 @@ class Game:
             for path in possible_paths:
                 try:
                     img = pygame.image.load(path)
-                    img = pygame.transform.scale(img, (PROJECTILE_SIZE, PROJECTILE_SIZE))
+                    img = pygame.transform.scale(img, (projectile_size, projectile_size))
                     self.ammo_images[i] = img
                     image_loaded = True
                     print(f"✓ Loaded {filename} from {path}")
@@ -238,11 +243,11 @@ class Game:
             if not image_loaded:
                 # Create placeholder if image not found
                 print(f"✗ Could not load {filename}, using placeholder")
-                surface = pygame.Surface((PROJECTILE_SIZE, PROJECTILE_SIZE), pygame.SRCALPHA)
+                surface = pygame.Surface((projectile_size, projectile_size), pygame.SRCALPHA)
 
                 # Use yellow circle as placeholder
-                pygame.draw.circle(surface, YELLOW, (PROJECTILE_SIZE//2, PROJECTILE_SIZE//2), PROJECTILE_SIZE//2 - 2)
-                pygame.draw.circle(surface, BLACK, (PROJECTILE_SIZE//2, PROJECTILE_SIZE//2), PROJECTILE_SIZE//2 - 2, 2)
+                pygame.draw.circle(surface, YELLOW, (projectile_size//2, projectile_size//2), projectile_size//2 - 2)
+                pygame.draw.circle(surface, BLACK, (projectile_size//2, projectile_size//2), projectile_size//2 - 2, 2)
 
                 self.ammo_images[i] = surface
 
@@ -416,20 +421,22 @@ class Game:
 
         # Draw projectiles with rainbow effect for homing/powered projectiles
         for proj in self.projectiles:
-            if proj.is_homing or self.powerup_active:
-                # Animated rainbow color effect
-                t = time.time() * 1000
-                color = (
-                    int((t / 10) % 255),
-                    int((t / 15) % 255),
-                    int((t / 20) % 255)
-                )
-            else:
-                color = YELLOW
+            ammo_img = self.ammo_images[proj.ammo_index]
+            # Adjust position to center the image
+            pos_x = int(proj.x - ammo_img.get_width() / 2)
+            pos_y = int(proj.y - ammo_img.get_height() / 2)
 
-            pygame.draw.circle(self.screen, color,
-                             (int(proj.x), int(proj.y)),
-                             int(PROJECTILE_SIZE / 2))
+            if proj.is_homing or self.powerup_active:
+                # Apply a rainbow tint to the image
+                tinted_image = ammo_img.copy()
+                t = time.time() * 10
+                r = int((math.sin(t + 0) * 127 + 128) * 0.5)
+                g = int((math.sin(t + 2) * 127 + 128) * 0.5)
+                b = int((math.sin(t + 4) * 127 + 128) * 0.5)
+                tinted_image.fill((r, g, b, 128), special_flags=pygame.BLEND_RGBA_MULT)
+                self.screen.blit(tinted_image, (pos_x, pos_y))
+            else:
+                self.screen.blit(ammo_img, (pos_x, pos_y))
 
         # Draw aim line when dragging
         if self.is_touching:
@@ -513,7 +520,7 @@ class Game:
             vy = (dy / distance) * speed
 
             # Create and add projectile
-            proj = Projectile(start_x, start_y, vx, vy, current_weapon.is_homing)
+            proj = Projectile(start_x, start_y, vx, vy, current_weapon.is_homing, self.current_weapon_index)
             self.projectiles.append(proj)
 
     def handle_events(self):
