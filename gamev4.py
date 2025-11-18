@@ -50,15 +50,16 @@ POWERUP_SIZE = 100
 
 class Weapon:
     """Represents a weapon with its properties"""
-    def __init__(self, name, projectile_type, speed, is_homing=False):
+    def __init__(self, name, projectile_type, speed, projectile_size, is_homing=False):
         self.name = name
         self.projectile_type = projectile_type
         self.speed = speed
+        self.projectile_size = projectile_size
         self.is_homing = is_homing
 
 
 class Projectile:
-    """Represents a fired projectile"""
+    """Represents a fired projectile."""
     def __init__(self, x, y, vx, vy, is_homing=False, ammo_index=0):
         self.x = x
         self.y = y
@@ -91,8 +92,18 @@ class PowerUp:
         self.active = True
 
 
+class Enemy:
+    """Represents an enemy with unique attributes"""
+    def __init__(self, name, image_surface, size, speed_multiplier, evasion_pattern):
+        self.name = name
+        self.image = image_surface
+        self.size = size
+        self.speed_multiplier = speed_multiplier
+        self.evasion_pattern = evasion_pattern
+
+
 class Game:
-    """Main game class"""
+    """Main game class."""
     def __init__(self):
         self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
         pygame.display.set_caption("Stress Relief Target Game")
@@ -102,23 +113,26 @@ class Game:
 
         # Initialize weapons with all 12 types
         self.weapons = [
-            Weapon("Slingshot", "Vegetables", 15),
-            Weapon("Bottle Rockets", "Rockets", 20),
-            Weapon("Catapult", "Boulders", 12),
-            Weapon("Tomato BB Gun", "Tomatoes", 25),
-            Weapon("Poison Bow", "Poison Arrows", 18),
-            Weapon("Marshmallow Crossbow", "Flaming Marshmallows", 16),
-            Weapon("Darts", "Darts", 22),
-            Weapon("Throwing Stars", "Shuriken", 24),
-            Weapon("Potato Cannon", "Potatoes", 17),
-            Weapon("Frog Cannon", "Gay Frogs", 17),
-            Weapon("Trans Missile", "Guided Missile", 10, is_homing=True),
-            Weapon("Pride Parade", "Rainbow Seeker", 14, is_homing=True)
+            Weapon("Slingshot", "Vegetables", 15, 30),
+            Weapon("Bottle Rockets", "Rockets", 20, 25),
+            Weapon("Catapult", "Boulders", 12, 50),
+            Weapon("Tomato BB Gun", "Tomatoes", 25, 20),
+            Weapon("Poison Bow", "Poison Arrows", 18, 35),
+            Weapon("Marshmallow Crossbow", "Flaming Marshmallows", 16, 25),
+            Weapon("Darts", "Darts", 22, 15),
+            Weapon("Throwing Stars", "Shuriken", 24, 25),
+            Weapon("Potato Cannon", "Potatoes", 17, 40),
+            Weapon("Frog Cannon", "Gay Frogs", 17, 45),
+            Weapon("Trans Missile", "Guided Missile", 10, 55, is_homing=True),
+            Weapon("Pride Parade", "Rainbow Seeker", 14, 60, is_homing=True)
         ]
 
         # Load weapon images (or create placeholders if not found)
         self.weapon_images = {}
         self.load_weapon_images()
+
+        self.ammo_images = {}
+        self.load_ammo_images()
 
         self.current_weapon_index = 0
         self.projectiles = []
@@ -136,6 +150,11 @@ class Game:
         self.touch_x = SCREEN_WIDTH // 2  # Start centered
         self.touch_y = 0
         self.weapon_x = SCREEN_WIDTH // 2  # Weapon follows mouse X
+
+        self.state = 'enemy_selection'
+        self.enemies = []
+        self.selected_enemy = None
+        self.create_enemies()
 
         self.reset_target()
         self.running = True
@@ -216,6 +235,7 @@ class Game:
 
         for i, filename in enumerate(ammo_files):
             image_loaded = False
+            projectile_size = self.weapons[i].projectile_size
 
             # Try multiple paths
             possible_paths = [
@@ -227,7 +247,7 @@ class Game:
             for path in possible_paths:
                 try:
                     img = pygame.image.load(path)
-                    img = pygame.transform.scale(img, (PROJECTILE_SIZE, PROJECTILE_SIZE))
+                    img = pygame.transform.scale(img, (projectile_size, projectile_size))
                     self.ammo_images[i] = img
                     image_loaded = True
                     print(f"✓ Loaded {filename} from {path}")
@@ -238,22 +258,64 @@ class Game:
             if not image_loaded:
                 # Create placeholder if image not found
                 print(f"✗ Could not load {filename}, using placeholder")
-                surface = pygame.Surface((PROJECTILE_SIZE, PROJECTILE_SIZE), pygame.SRCALPHA)
+                surface = pygame.Surface((projectile_size, projectile_size), pygame.SRCALPHA)
 
                 # Use yellow circle as placeholder
-                pygame.draw.circle(surface, YELLOW, (PROJECTILE_SIZE//2, PROJECTILE_SIZE//2), PROJECTILE_SIZE//2 - 2)
-                pygame.draw.circle(surface, BLACK, (PROJECTILE_SIZE//2, PROJECTILE_SIZE//2), PROJECTILE_SIZE//2 - 2, 2)
+                pygame.draw.circle(surface, YELLOW, (projectile_size//2, projectile_size//2), projectile_size//2 - 2)
+                pygame.draw.circle(surface, BLACK, (projectile_size//2, projectile_size//2), projectile_size//2 - 2, 2)
 
                 self.ammo_images[i] = surface
 
+    def create_enemies(self):
+        """Create some placeholder enemies for the selection screen"""
+        # --- Enemy 1: Standard Target ---
+        img1 = pygame.Surface((80, 80), pygame.SRCALPHA)
+        pygame.draw.circle(img1, (255, 0, 0), (40, 40), 40)
+        pygame.draw.circle(img1, (255, 255, 255), (40, 40), 25)
+        pygame.draw.circle(img1, (255, 0, 0), (40, 40), 10)
+        self.enemies.append(Enemy("Standard", img1, 80, 1.0, "random"))
+
+        # --- Enemy 2: Fast & Small ---
+        img2 = pygame.Surface((40, 40), pygame.SRCALPHA)
+        pygame.draw.rect(img2, (0, 0, 255), (0, 0, 40, 40))
+        pygame.draw.rect(img2, (255, 255, 0), (10, 10, 20, 20))
+        self.enemies.append(Enemy("Quickster", img2, 40, 1.8, "bounce"))
+
+        # --- Enemy 3: Large & Slow ---
+        img3 = pygame.Surface((120, 120), pygame.SRCALPHA)
+        pygame.draw.ellipse(img3, (0, 255, 0), (0, 0, 120, 80))
+        pygame.draw.ellipse(img3, (50, 200, 50), (20, 15, 80, 50))
+        self.enemies.append(Enemy("Tank", img3, 120, 0.6, "horizontal"))
+
+        # --- Enemy 4: Evader ---
+        img4 = pygame.Surface((60, 60), pygame.SRCALPHA)
+        points = [(30, 0), (60, 60), (0, 60)]
+        pygame.draw.polygon(img4, (255, 165, 0), points)
+        self.enemies.append(Enemy("Dodger", img4, 60, 1.2, "evade"))
+
     def reset_target(self):
         """Reset target to a new random position with random velocity"""
+        if not self.selected_enemy:
+            return  # Don't create a target if no enemy is selected
+
+        size = self.selected_enemy.size
+        speed = self.selected_enemy.speed_multiplier
+        pattern = self.selected_enemy.evasion_pattern
+
+        vx = random.uniform(-4, 4) * speed
+        vy = random.uniform(-4, 4) * speed
+
+        if pattern == "horizontal":
+            vy = 0
+        elif pattern == "vertical":
+            vx = 0
+
         self.target = Target(
-            x=SCREEN_WIDTH / 2,
-            y=SCREEN_HEIGHT / 3,
-            vx=random.uniform(-4, 4),
-            vy=random.uniform(-4, 4),
-            size=TARGET_SIZE
+            x=random.uniform(size, SCREEN_WIDTH - size),
+            y=random.uniform(size, SCREEN_HEIGHT / 2 - size),
+            vx=vx,
+            vy=vy,
+            size=size
         )
 
     def spawn_powerup(self):
@@ -298,6 +360,15 @@ class Game:
 
         # Update target position
         if self.target:
+            # Evasion behavior
+            if self.selected_enemy and self.selected_enemy.evasion_pattern == "evade":
+                for proj in self.projectiles:
+                    dist = math.hypot(self.target.x - proj.x, self.target.y - proj.y)
+                    if dist < 150:  # Evasion radius
+                        # Move away from the projectile
+                        self.target.x += (self.target.x - proj.x) * 0.02
+                        self.target.y += (self.target.y - proj.y) * 0.02
+
             self.target.x += self.target.vx
             self.target.y += self.target.vy
 
@@ -402,34 +473,31 @@ class Game:
             text_rect = text.get_rect(center=(int(self.powerup.x), int(self.powerup.y - 60)))
             self.screen.blit(text, text_rect)
 
-        # Draw target (red bullseye)
-        if self.target:
-            pygame.draw.circle(self.screen, RED,
-                             (int(self.target.x), int(self.target.y)),
-                             int(self.target.size))
-            pygame.draw.circle(self.screen, WHITE,
-                             (int(self.target.x), int(self.target.y)),
-                             int(self.target.size * 0.6))
-            pygame.draw.circle(self.screen, RED,
-                             (int(self.target.x), int(self.target.y)),
-                             int(self.target.size * 0.3))
+        # Draw target
+        if self.target and self.selected_enemy:
+            # Adjust position to center the image
+            pos_x = int(self.target.x - self.selected_enemy.image.get_width() / 2)
+            pos_y = int(self.target.y - self.selected_enemy.image.get_height() / 2)
+            self.screen.blit(self.selected_enemy.image, (pos_x, pos_y))
 
         # Draw projectiles with rainbow effect for homing/powered projectiles
         for proj in self.projectiles:
-            if proj.is_homing or self.powerup_active:
-                # Animated rainbow color effect
-                t = time.time() * 1000
-                color = (
-                    int((t / 10) % 255),
-                    int((t / 15) % 255),
-                    int((t / 20) % 255)
-                )
-            else:
-                color = YELLOW
+            ammo_img = self.ammo_images[proj.ammo_index]
+            # Adjust position to center the image
+            pos_x = int(proj.x - ammo_img.get_width() / 2)
+            pos_y = int(proj.y - ammo_img.get_height() / 2)
 
-            pygame.draw.circle(self.screen, color,
-                             (int(proj.x), int(proj.y)),
-                             int(PROJECTILE_SIZE / 2))
+            if proj.is_homing or self.powerup_active:
+                # Apply a rainbow tint to the image
+                tinted_image = ammo_img.copy()
+                t = time.time() * 10
+                r = int((math.sin(t + 0) * 127 + 128) * 0.5)
+                g = int((math.sin(t + 2) * 127 + 128) * 0.5)
+                b = int((math.sin(t + 4) * 127 + 128) * 0.5)
+                tinted_image.fill((r, g, b, 128), special_flags=pygame.BLEND_RGBA_MULT)
+                self.screen.blit(tinted_image, (pos_x, pos_y))
+            else:
+                self.screen.blit(ammo_img, (pos_x, pos_y))
 
         # Draw aim line when dragging
         if self.is_touching:
@@ -495,6 +563,68 @@ class Game:
 
         pygame.display.flip()
 
+    def draw_enemy_selection_screen(self):
+        """Draw the enemy selection screen"""
+        self.screen.fill(BLACK)
+        title_font = pygame.font.Font(None, 72)
+        subtitle_font = pygame.font.Font(None, 36)
+
+        # Title
+        title_text = title_font.render("CHOOSE YOUR TARGET", True, RED)
+        title_rect = title_text.get_rect(center=(SCREEN_WIDTH / 2, 80))
+        self.screen.blit(title_text, title_rect)
+
+        # Instructions
+        inst_text = subtitle_font.render("Click a target to begin", True, WHITE)
+        inst_rect = inst_text.get_rect(center=(SCREEN_WIDTH / 2, 150))
+        self.screen.blit(inst_text, inst_rect)
+
+        # Grid layout
+        grid_cols = 4
+        grid_rows = 1
+        col_width = SCREEN_WIDTH // grid_cols
+        row_height = 300  # Vertical space for each row
+        start_x = (SCREEN_WIDTH - (grid_cols * col_width)) / 2 + col_width / 2
+        start_y = 250
+
+        for i, enemy in enumerate(self.enemies):
+            col = i % grid_cols
+            row = i // grid_cols
+            x = start_x + col * col_width
+            y = start_y + row * row_height
+
+            # Draw thumbnail
+            thumbnail = pygame.transform.scale(enemy.image, (120, 120))
+            thumb_rect = thumbnail.get_rect(center=(x, y))
+            self.screen.blit(thumbnail, thumb_rect)
+
+            # Draw name
+            name_text = self.small_font.render(enemy.name, True, WHITE)
+            name_rect = name_text.get_rect(center=(x, y + 80))
+            self.screen.blit(name_text, name_rect)
+
+        pygame.display.flip()
+
+    def handle_enemy_selection_events(self):
+        """Handle events on the enemy selection screen"""
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                self.running = False
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                grid_cols = 4
+                col_width = SCREEN_WIDTH // grid_cols
+                start_x = (SCREEN_WIDTH - (grid_cols * col_width)) / 2 + col_width / 2
+                start_y = 250
+
+                for i, enemy in enumerate(self.enemies):
+                    col = i % grid_cols
+                    x = start_x + col * col_width
+                    rect = pygame.Rect(x - 60, start_y - 60, 120, 120)
+                    if rect.collidepoint(event.pos):
+                        self.selected_enemy = enemy
+                        self.state = 'playing'
+                        break
+
     def launch_projectile(self, target_x, target_y):
         """Launch a projectile from weapon position toward target coordinates"""
         start_x = self.weapon_x  # Launch from weapon's current X position
@@ -513,7 +643,7 @@ class Game:
             vy = (dy / distance) * speed
 
             # Create and add projectile
-            proj = Projectile(start_x, start_y, vx, vy, current_weapon.is_homing)
+            proj = Projectile(start_x, start_y, vx, vy, current_weapon.is_homing, self.current_weapon_index)
             self.projectiles.append(proj)
 
     def handle_events(self):
@@ -558,9 +688,14 @@ class Game:
         print("\nHit the Leather Daddy power-up for DADDY POWER! 💪")
 
         while self.running:
-            self.handle_events()
-            self.update()
-            self.draw()
+            if self.state == 'enemy_selection':
+                self.handle_enemy_selection_events()
+                self.draw_enemy_selection_screen()
+            elif self.state == 'playing':
+                self.handle_events()
+                self.update()
+                self.draw()
+
             self.clock.tick(FPS)
 
         print(f"\n🎯 Final Score: {self.score}")
