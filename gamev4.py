@@ -50,15 +50,18 @@ POWERUP_SIZE = 100
 
 class Weapon:
     """Represents a weapon with its properties"""
-    def __init__(self, name, projectile_type, speed, is_homing=False):
+    def __init__(self, name, projectile_type, speed, projectile_size, fire_sound_path, hit_sound_path, is_homing=False):
         self.name = name
         self.projectile_type = projectile_type
         self.speed = speed
+        self.projectile_size = projectile_size
+        self.fire_sound_path = fire_sound_path
+        self.hit_sound_path = hit_sound_path
         self.is_homing = is_homing
 
 
 class Projectile:
-    """Represents a fired projectile"""
+    """Represents a fired projectile."""
     def __init__(self, x, y, vx, vy, is_homing=False, ammo_index=0):
         self.x = x
         self.y = y
@@ -91,34 +94,55 @@ class PowerUp:
         self.active = True
 
 
+class Enemy:
+    """Represents an enemy with unique attributes"""
+    def __init__(self, name, image_filename, size, speed_multiplier, evasion_pattern, description, font_path, music_track):
+        self.name = name
+        self.image_filename = image_filename
+        self.image = None  # Loaded in load_enemies
+        self.size = size
+        self.speed_multiplier = speed_multiplier
+        self.evasion_pattern = evasion_pattern
+        self.description = description
+        self.font_path = font_path
+        self.music_track = music_track
+
+
 class Game:
-    """Main game class"""
+    """Main game class."""
     def __init__(self):
         self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
         pygame.display.set_caption("Stress Relief Target Game")
+        pygame.mixer.init()
         self.clock = pygame.time.Clock()
         self.font = pygame.font.Font(None, 36)
         self.small_font = pygame.font.Font(None, 24)
 
         # Initialize weapons with all 12 types
         self.weapons = [
-            Weapon("Slingshot", "Vegetables", 15),
-            Weapon("Bottle Rockets", "Rockets", 20),
-            Weapon("Catapult", "Boulders", 12),
-            Weapon("Tomato BB Gun", "Tomatoes", 25),
-            Weapon("Poison Bow", "Poison Arrows", 18),
-            Weapon("Marshmallow Crossbow", "Flaming Marshmallows", 16),
-            Weapon("Darts", "Darts", 22),
-            Weapon("Throwing Stars", "Shuriken", 24),
-            Weapon("Potato Cannon", "Potatoes", 17),
-            Weapon("Frog Cannon", "Gay Frogs", 17),
-            Weapon("Trans Missile", "Guided Missile", 10, is_homing=True),
-            Weapon("Pride Parade", "Rainbow Seeker", 14, is_homing=True)
+            Weapon("Slingshot", "Vegetables", 15, 30, "fire_slingshot.ogg", "hit_slingshot.ogg"),
+            Weapon("Bottle Rockets", "Rockets", 20, 25, "fire_rocket.ogg", "hit_rocket.ogg"),
+            Weapon("Catapult", "Boulders", 12, 50, "fire_catapult.ogg", "hit_catapult.ogg"),
+            Weapon("Tomato BB Gun", "Tomatoes", 25, 20, "fire_bbgun.ogg", "hit_bbgun.ogg"),
+            Weapon("Poison Bow", "Poison Arrows", 18, 35, "fire_bow.ogg", "hit_bow.ogg"),
+            Weapon("Marshmallow Crossbow", "Flaming Marshmallows", 16, 25, "fire_crossbow.ogg", "hit_crossbow.ogg"),
+            Weapon("Darts", "Darts", 22, 15, "fire_dart.ogg", "hit_dart.ogg"),
+            Weapon("Throwing Stars", "Shuriken", 24, 25, "fire_star.ogg", "hit_star.ogg"),
+            Weapon("Potato Cannon", "Potatoes", 17, 40, "fire_cannon.ogg", "hit_cannon.ogg"),
+            Weapon("Frog Cannon", "Gay Frogs", 17, 45, "fire_frog.ogg", "hit_frog.ogg"),
+            Weapon("Trans Missile", "Guided Missile", 10, 55, "fire_missile.ogg", "hit_missile.ogg", is_homing=True),
+            Weapon("Pride Parade", "Rainbow Seeker", 14, 60, "fire_pride.ogg", "hit_pride.ogg", is_homing=True)
         ]
 
         # Load weapon images (or create placeholders if not found)
         self.weapon_images = {}
         self.load_weapon_images()
+
+        self.ammo_images = {}
+        self.load_ammo_images()
+
+        self.sounds = {}
+        self.load_sounds()
 
         self.current_weapon_index = 0
         self.projectiles = []
@@ -136,6 +160,11 @@ class Game:
         self.touch_x = SCREEN_WIDTH // 2  # Start centered
         self.touch_y = 0
         self.weapon_x = SCREEN_WIDTH // 2  # Weapon follows mouse X
+
+        self.state = 'enemy_selection'
+        self.enemies = []
+        self.selected_enemy = None
+        self.load_enemies()
 
         self.reset_target()
         self.running = True
@@ -216,6 +245,7 @@ class Game:
 
         for i, filename in enumerate(ammo_files):
             image_loaded = False
+            projectile_size = self.weapons[i].projectile_size
 
             # Try multiple paths
             possible_paths = [
@@ -227,7 +257,7 @@ class Game:
             for path in possible_paths:
                 try:
                     img = pygame.image.load(path)
-                    img = pygame.transform.scale(img, (PROJECTILE_SIZE, PROJECTILE_SIZE))
+                    img = pygame.transform.scale(img, (projectile_size, projectile_size))
                     self.ammo_images[i] = img
                     image_loaded = True
                     print(f"✓ Loaded {filename} from {path}")
@@ -238,22 +268,87 @@ class Game:
             if not image_loaded:
                 # Create placeholder if image not found
                 print(f"✗ Could not load {filename}, using placeholder")
-                surface = pygame.Surface((PROJECTILE_SIZE, PROJECTILE_SIZE), pygame.SRCALPHA)
+                surface = pygame.Surface((projectile_size, projectile_size), pygame.SRCALPHA)
 
                 # Use yellow circle as placeholder
-                pygame.draw.circle(surface, YELLOW, (PROJECTILE_SIZE//2, PROJECTILE_SIZE//2), PROJECTILE_SIZE//2 - 2)
-                pygame.draw.circle(surface, BLACK, (PROJECTILE_SIZE//2, PROJECTILE_SIZE//2), PROJECTILE_SIZE//2 - 2, 2)
+                pygame.draw.circle(surface, YELLOW, (projectile_size//2, projectile_size//2), projectile_size//2 - 2)
+                pygame.draw.circle(surface, BLACK, (projectile_size//2, projectile_size//2), projectile_size//2 - 2, 2)
 
                 self.ammo_images[i] = surface
 
+    def load_enemies(self):
+        """Load enemies from a definition list and their images from files"""
+        enemy_definitions = [
+            {"name": "Standard", "img": "enemy_standard.png", "size": 80, "speed": 1.0, "pattern": "random", "desc": "A classic bullseye.", "font": "font_standard.ttf", "music": "music_standard.ogg"},
+            {"name": "Quickster", "img": "enemy_quick.png", "size": 40, "speed": 1.8, "pattern": "bounce", "desc": "Small, fast, and erratic.", "font": "font_quick.ttf", "music": "music_quick.ogg"},
+            {"name": "Tank", "img": "enemy_tank.png", "size": 120, "speed": 0.6, "pattern": "horizontal", "desc": "Large and slow-moving.", "font": "font_tank.ttf", "music": "music_tank.ogg"},
+            {"name": "Dodger", "img": "enemy_dodger.png", "size": 60, "speed": 1.2, "pattern": "evade", "desc": "Tries to avoid projectiles.", "font": "font_dodger.ttf", "music": "music_dodger.ogg"},
+            {"name": "Ghost", "img": "enemy_ghost.png", "size": 70, "speed": 1.1, "pattern": "random", "desc": "Fades in and out.", "font": "font_ghost.ttf", "music": "music_ghost.ogg"},
+            {"name": "Spinner", "img": "enemy_spinner.png", "size": 50, "speed": 1.5, "pattern": "bounce", "desc": "Spins wildly as it moves.", "font": "font_spinner.ttf", "music": "music_spinner.ogg"},
+            {"name": "Cloner", "img": "enemy_cloner.png", "size": 90, "speed": 0.8, "pattern": "horizontal", "desc": "Splits into smaller clones.", "font": "font_cloner.ttf", "music": "music_cloner.ogg"},
+            {"name": "Shadow", "img": "enemy_shadow.png", "size": 60, "speed": 1.3, "pattern": "evade", "desc": "Moves in the shadows.", "font": "font_shadow.ttf", "music": "music_shadow.ogg"}
+        ]
+
+        for definition in enemy_definitions:
+            enemy = Enemy(definition["name"], definition["img"], definition["size"], definition["speed"], definition["pattern"], definition["desc"], definition["font"], definition["music"])
+
+            try:
+                path = os.path.join('images', 'enemies', enemy.image_filename)
+                img = pygame.image.load(path)
+                enemy.image = pygame.transform.scale(img, (enemy.size, enemy.size))
+                print(f"✓ Loaded enemy image: {enemy.image_filename}")
+            except pygame.error:
+                print(f"✗ Could not load enemy image: {enemy.image_filename}. Creating placeholder.")
+                surface = pygame.Surface((enemy.size, enemy.size), pygame.SRCALPHA)
+                # Simple placeholder: a colored circle
+                color = (random.randint(50, 200), random.randint(50, 200), random.randint(50, 200))
+                pygame.draw.circle(surface, color, (enemy.size // 2, enemy.size // 2), enemy.size // 2)
+                enemy.image = surface
+
+            self.enemies.append(enemy)
+
+    def load_sounds(self):
+        """Load all sound effects"""
+        self.sounds = {}
+        for weapon in self.weapons:
+            try:
+                self.sounds[weapon.fire_sound_path] = pygame.mixer.Sound(os.path.join('audio', 'sfx', weapon.fire_sound_path))
+            except pygame.error:
+                print(f"✗ Could not load sound: {weapon.fire_sound_path}")
+            try:
+                self.sounds[weapon.hit_sound_path] = pygame.mixer.Sound(os.path.join('audio', 'sfx', weapon.hit_sound_path))
+            except pygame.error:
+                print(f"✗ Could not load sound: {weapon.hit_sound_path}")
+
+        try:
+            self.sounds["select"] = pygame.mixer.Sound(os.path.join('audio', 'sfx', 'select.ogg'))
+            self.sounds["powerup"] = pygame.mixer.Sound(os.path.join('audio', 'sfx', 'powerup.ogg'))
+        except pygame.error:
+            print("✗ Could not load UI or power-up sounds.")
+
     def reset_target(self):
         """Reset target to a new random position with random velocity"""
+        if not self.selected_enemy:
+            return  # Don't create a target if no enemy is selected
+
+        size = self.selected_enemy.size
+        speed = self.selected_enemy.speed_multiplier
+        pattern = self.selected_enemy.evasion_pattern
+
+        vx = random.uniform(-4, 4) * speed
+        vy = random.uniform(-4, 4) * speed
+
+        if pattern == "horizontal":
+            vy = 0
+        elif pattern == "vertical":
+            vx = 0
+
         self.target = Target(
-            x=SCREEN_WIDTH / 2,
-            y=SCREEN_HEIGHT / 3,
-            vx=random.uniform(-4, 4),
-            vy=random.uniform(-4, 4),
-            size=TARGET_SIZE
+            x=random.uniform(size, SCREEN_WIDTH - size),
+            y=random.uniform(size, SCREEN_HEIGHT / 2 - size),
+            vx=vx,
+            vy=vy,
+            size=size
         )
 
     def spawn_powerup(self):
@@ -298,6 +393,15 @@ class Game:
 
         # Update target position
         if self.target:
+            # Evasion behavior
+            if self.selected_enemy and self.selected_enemy.evasion_pattern == "evade":
+                for proj in self.projectiles:
+                    dist = math.hypot(self.target.x - proj.x, self.target.y - proj.y)
+                    if dist < 150:  # Evasion radius
+                        # Move away from the projectile
+                        self.target.x += (self.target.x - proj.x) * 0.02
+                        self.target.y += (self.target.y - proj.y) * 0.02
+
             self.target.x += self.target.vx
             self.target.y += self.target.vy
 
@@ -354,6 +458,8 @@ class Game:
                     self.powerup_active = True
                     self.powerup_end_time = time.time() + 10  # 10 seconds of power
                     self.next_powerup_time = time.time() + random.uniform(20, 40)
+                    if "powerup" in self.sounds:
+                        self.sounds["powerup"].play()
 
             # Check collision with target
             if self.target:
@@ -365,6 +471,10 @@ class Game:
                     proj.active = False
                     # Triple points during Daddy Power!
                     self.score += 3 if self.powerup_active else 1
+
+                    weapon = self.weapons[proj.ammo_index]
+                    if weapon.hit_sound_path in self.sounds:
+                        self.sounds[weapon.hit_sound_path].play()
 
                     # Respawn target in new location
                     self.target.x = random.uniform(100, SCREEN_WIDTH - 100)
@@ -402,34 +512,31 @@ class Game:
             text_rect = text.get_rect(center=(int(self.powerup.x), int(self.powerup.y - 60)))
             self.screen.blit(text, text_rect)
 
-        # Draw target (red bullseye)
-        if self.target:
-            pygame.draw.circle(self.screen, RED,
-                             (int(self.target.x), int(self.target.y)),
-                             int(self.target.size))
-            pygame.draw.circle(self.screen, WHITE,
-                             (int(self.target.x), int(self.target.y)),
-                             int(self.target.size * 0.6))
-            pygame.draw.circle(self.screen, RED,
-                             (int(self.target.x), int(self.target.y)),
-                             int(self.target.size * 0.3))
+        # Draw target
+        if self.target and self.selected_enemy:
+            # Adjust position to center the image
+            pos_x = int(self.target.x - self.selected_enemy.image.get_width() / 2)
+            pos_y = int(self.target.y - self.selected_enemy.image.get_height() / 2)
+            self.screen.blit(self.selected_enemy.image, (pos_x, pos_y))
 
         # Draw projectiles with rainbow effect for homing/powered projectiles
         for proj in self.projectiles:
-            if proj.is_homing or self.powerup_active:
-                # Animated rainbow color effect
-                t = time.time() * 1000
-                color = (
-                    int((t / 10) % 255),
-                    int((t / 15) % 255),
-                    int((t / 20) % 255)
-                )
-            else:
-                color = YELLOW
+            ammo_img = self.ammo_images[proj.ammo_index]
+            # Adjust position to center the image
+            pos_x = int(proj.x - ammo_img.get_width() / 2)
+            pos_y = int(proj.y - ammo_img.get_height() / 2)
 
-            pygame.draw.circle(self.screen, color,
-                             (int(proj.x), int(proj.y)),
-                             int(PROJECTILE_SIZE / 2))
+            if proj.is_homing or self.powerup_active:
+                # Apply a rainbow tint to the image
+                tinted_image = ammo_img.copy()
+                t = time.time() * 10
+                r = int((math.sin(t + 0) * 127 + 128) * 0.5)
+                g = int((math.sin(t + 2) * 127 + 128) * 0.5)
+                b = int((math.sin(t + 4) * 127 + 128) * 0.5)
+                tinted_image.fill((r, g, b, 128), special_flags=pygame.BLEND_RGBA_MULT)
+                self.screen.blit(tinted_image, (pos_x, pos_y))
+            else:
+                self.screen.blit(ammo_img, (pos_x, pos_y))
 
         # Draw aim line when dragging
         if self.is_touching:
@@ -495,6 +602,83 @@ class Game:
 
         pygame.display.flip()
 
+    def draw_enemy_selection_screen(self):
+        """Draw the enemy selection screen"""
+        self.screen.fill(BLACK)
+        title_font = pygame.font.Font(None, 72)
+        subtitle_font = pygame.font.Font(None, 36)
+
+        # Title
+        title_text = title_font.render("CHOOSE YOUR TARGET", True, RED)
+        title_rect = title_text.get_rect(center=(SCREEN_WIDTH / 2, 60))
+        self.screen.blit(title_text, title_rect)
+
+        # Grid layout
+        grid_cols = 4
+        grid_rows = 2
+        col_width = SCREEN_WIDTH // grid_cols
+        row_height = (SCREEN_HEIGHT - 150) // grid_rows
+        start_x = col_width // 2
+        start_y = 150 + row_height // 2
+
+        for i, enemy in enumerate(self.enemies):
+            col = i % grid_cols
+            row = i // grid_cols
+            x = start_x + col * col_width
+            y = start_y + row * row_height
+
+            # Draw thumbnail
+            thumbnail = pygame.transform.scale(enemy.image, (100, 100))
+            thumb_rect = thumbnail.get_rect(center=(x, y - 20))
+            self.screen.blit(thumbnail, thumb_rect)
+
+            # Draw name
+            try:
+                font_path = os.path.join('fonts', enemy.font_path)
+                name_font = pygame.font.Font(font_path, 28)
+            except:
+                name_font = self.small_font
+
+            name_text = name_font.render(enemy.name, True, WHITE)
+            name_rect = name_text.get_rect(center=(x, y + 50))
+            self.screen.blit(name_text, name_rect)
+
+            # Draw description
+            desc_font = pygame.font.Font(None, 20)
+            desc_text = desc_font.render(enemy.description, True, (200, 200, 200))
+            desc_rect = desc_text.get_rect(center=(x, y + 80))
+            self.screen.blit(desc_text, desc_rect)
+
+        pygame.display.flip()
+
+    def handle_enemy_selection_events(self):
+        """Handle events on the enemy selection screen"""
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                self.running = False
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                grid_cols = 4
+                col_width = SCREEN_WIDTH // grid_cols
+                start_x = (SCREEN_WIDTH - (grid_cols * col_width)) / 2 + col_width / 2
+                start_y = 250
+
+                for i, enemy in enumerate(self.enemies):
+                    col = i % grid_cols
+                    x = start_x + col * col_width
+                    rect = pygame.Rect(x - 60, start_y - 60, 120, 120)
+                    if rect.collidepoint(event.pos):
+                        self.selected_enemy = enemy
+                        self.state = 'playing'
+                        self.reset_target()
+                        if "select" in self.sounds:
+                            self.sounds["select"].play()
+                        try:
+                            pygame.mixer.music.load(os.path.join('audio', 'music', self.selected_enemy.music_track))
+                            pygame.mixer.music.play(-1)
+                        except pygame.error:
+                            print(f"✗ Could not load music for {self.selected_enemy.name}.")
+                        break
+
     def launch_projectile(self, target_x, target_y):
         """Launch a projectile from weapon position toward target coordinates"""
         start_x = self.weapon_x  # Launch from weapon's current X position
@@ -508,12 +692,15 @@ class Game:
             current_weapon = self.weapons[self.current_weapon_index]
             speed = current_weapon.speed
 
+            if current_weapon.fire_sound_path in self.sounds:
+                self.sounds[current_weapon.fire_sound_path].play()
+
             # Calculate velocity vector
             vx = (dx / distance) * speed
             vy = (dy / distance) * speed
 
             # Create and add projectile
-            proj = Projectile(start_x, start_y, vx, vy, current_weapon.is_homing)
+            proj = Projectile(start_x, start_y, vx, vy, current_weapon.is_homing, self.current_weapon_index)
             self.projectiles.append(proj)
 
     def handle_events(self):
@@ -557,10 +744,21 @@ class Game:
         print("  - ESC: Quit")
         print("\nHit the Leather Daddy power-up for DADDY POWER! 💪")
 
+        try:
+            pygame.mixer.music.load(os.path.join('audio', 'music', 'selection_screen.ogg'))
+            pygame.mixer.music.play(-1)  # Loop indefinitely
+        except pygame.error:
+            print("✗ Could not load selection screen music.")
+
         while self.running:
-            self.handle_events()
-            self.update()
-            self.draw()
+            if self.state == 'enemy_selection':
+                self.handle_enemy_selection_events()
+                self.draw_enemy_selection_screen()
+            elif self.state == 'playing':
+                self.handle_events()
+                self.update()
+                self.draw()
+
             self.clock.tick(FPS)
 
         print(f"\n🎯 Final Score: {self.score}")
